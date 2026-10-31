@@ -1,0 +1,20 @@
+{
+  "name": "OphthaLog: Surgical Tracker v4",
+  "short_name": "OphthaLog v4",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f4f7f6",
+  "theme_color": "#3498db",
+  "icons": [
+    {
+      "src": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Eye_icon.svg/192px-Eye_icon.svg.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Eye_icon.svg/512px-Eye_icon.svg.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

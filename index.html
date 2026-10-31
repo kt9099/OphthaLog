@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OphthaLog: Surgical Tracker</title>
+    <!-- Link to the manifest file for PWA -->
+    <link rel="manifest" href="manifest.json">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f4f7f6;
+            color: #333;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        h2 { text-align: center; color: #2c3e50; }
+        .card {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        label { font-weight: bold; display: block; margin-top: 15px; margin-bottom: 5px; }
+        input, select {
+            width: 100%; padding: 12px; border: 1px solid #ccc;
+            border-radius: 6px; box-sizing: border-box; font-size: 16px;
+        }
+        
+        /* Flexbox for multiple IOL inputs */
+        .iol-group {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .iol-group > div {
+            flex: 1;
+        }
+        .iol-group input {
+            padding: 10px 5px;
+            font-size: 14px;
+            text-align: center;
+        }
+        
+        button {
+            width: 100%; padding: 15px; margin-top: 20px;
+            background-color: #3498db; color: white; border: none;
+            border-radius: 6px; font-size: 18px; font-weight: bold; cursor: pointer;
+        }
+        button.export-btn { background-color: #27ae60; }
+        button.danger-btn { background-color: #e74c3c; margin-top: 10px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 14px; }
+        th, td { padding: 8px; border-bottom: 1px solid #ddd; text-align: left; }
+    </style>
+</head>
+<body>
+
+    <h2>OphthaLog</h2>
+
+    <div class="card">
+        <form id="surgicalForm">
+            <label for="date">Date</label>
+            <input type="date" id="date" required>
+
+            <label for="uhid">Patient UHID</label>
+            <input type="text" id="uhid" placeholder="e.g., UHID-1042" required>
+
+            <label for="surgeryType">Surgery Type</label>
+            <select id="surgeryType" onchange="toggleInputs()">
+                <option value="Pterygium Excision + CAG">Pterygium Excision + CAG</option>
+                <option value="Phacoemulsification">Phacoemulsification</option>
+                <option value="SICS">SICS</option>
+                <option value="Other">Other</option>
+            </select>
+            
+            <!-- Hidden input for 'Other' surgery -->
+            <input type="text" id="otherSurgery" placeholder="Specify surgery name" style="display: none; margin-top: 10px;">
+
+            <!-- Eye Side + Multi-IOL Fields -->
+            <div id="iolSection" style="display: none;">
+                <label>Eye Side & IOL Powers (D)</label>
+                <select id="eyeSide">
+                    <option value="">Select Eye Side...</option>
+                    <option value="RE">RE</option>
+                    <option value="LE">LE</option>
+                </select>
+                <div class="iol-group">
+                    <div>
+                        <input type="number" id="foldablePower" placeholder="Foldable" step="0.5">
+                    </div>
+                    <div>
+                        <input type="number" id="rigidPower" placeholder="Rigid" step="0.5">
+                    </div>
+                    <div>
+                        <input type="number" id="auroflexPower" placeholder="Auroflex" step="0.5">
+                    </div>
+                </div>
+            </div>
+
+            <label for="fixation">Fixation / Notes</label>
+            <select id="fixation">
+                <option value="Nylon 10-0">Nylon 10-0</option>
+                <option value="Autologous Blood">Autologous Blood</option>
+                <option value="Fibrin Glue">Fibrin Glue</option>
+                <option value="N/A">N/A</option>
+            </select>
+
+            <button type="submit">Save Case</button>
+        </form>
+    </div>
+
+    <div class="card">
+        <h3>Recent Logs</h3>
+        <div style="overflow-x:auto;">
+            <table id="logTable">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>UHID</th>
+                        <th>Surgery</th>
+                        <th>IOL</th>
+                    </tr>
+                </thead>
+                <tbody id="logBody"></tbody>
+            </table>
+        </div>
+        <button class="export-btn" onclick="exportCSV()">Download CSV</button>
+        <button class="danger-btn" onclick="clearLogs()">Clear All Logs</button>
+    </div>
+
+    <script>
+        // 1. Initialize and Load Data
+        let cases = JSON.parse(localStorage.getItem('ophthaLogs_v4')) || [];
+        
+        document.getElementById('date').valueAsDate = new Date();
+
+        // Show/Hide specific inputs based on surgery selection
+        function toggleInputs() {
+            const type = document.getElementById('surgeryType').value;
+            
+            // Toggle 'Other' text box
+            document.getElementById('otherSurgery').style.display = (type === 'Other') ? 'block' : 'none';
+            if(type !== 'Other') document.getElementById('otherSurgery').value = '';
+
+            // Toggle IOL section for cataract surgeries
+            const isCataract = (type === 'Phacoemulsification' || type === 'SICS');
+            document.getElementById('iolSection').style.display = isCataract ? 'block' : 'none';
+            
+            // Clear IOL fields if not a cataract surgery
+            if (!isCataract) {
+                document.getElementById('eyeSide').value = '';
+                document.getElementById('foldablePower').value = '';
+                document.getElementById('rigidPower').value = '';
+                document.getElementById('auroflexPower').value = '';
+            }
+        }
+        
+        // Trigger on load
+        toggleInputs();
+
+        function renderTable() {
+            const tbody = document.getElementById('logBody');
+            tbody.innerHTML = '';
+            cases.slice(-5).reverse().forEach(c => {
+                
+                // Format the IOL display for the table
+                let iolText = [];
+                if (c.foldablePower) iolText.push(`Fold: ${c.foldablePower}`);
+                if (c.rigidPower) iolText.push(`Rigid: ${c.rigidPower}`);
+                if (c.auroflexPower) iolText.push(`Auro: ${c.auroflexPower}`);
+                
+                let iolDisplay = '-';
+                if (c.iolSide) {
+                    iolDisplay = c.iolSide;
+                    if (iolText.length > 0) {
+                        iolDisplay += ` (${iolText.join(', ')})`;
+                    }
+                }
+
+                tbody.innerHTML += `<tr>
+                    <td>${c.date}</td>
+                    <td>${c.uhid}</td>
+                    <td>${c.surgeryType}</td>
+                    <td>${iolDisplay}</td>
+                </tr>`;
+            });
+        }
+        renderTable();
+
+        // 2. Save New Case
+        document.getElementById('surgicalForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            let sType = document.getElementById('surgeryType').value;
+            if (sType === 'Other') {
+                sType = document.getElementById('otherSurgery').value || 'Other';
+            }
+
+            const newCase = {
+                date: document.getElementById('date').value,
+                uhid: document.getElementById('uhid').value,
+                surgeryType: sType,
+                fixation: document.getElementById('fixation').value,
+                iolSide: document.getElementById('eyeSide').value,
+                foldablePower: document.getElementById('foldablePower').value,
+                rigidPower: document.getElementById('rigidPower').value,
+                auroflexPower: document.getElementById('auroflexPower').value
+            };
+            
+            cases.push(newCase);
+            localStorage.setItem('ophthaLogs_v4', JSON.stringify(cases));
+            
+            renderTable();
+            document.getElementById('surgicalForm').reset();
+            document.getElementById('date').valueAsDate = new Date();
+            toggleInputs(); 
+        });
+
+        // 3. Export to CSV
+        function exportCSV() {
+            if (cases.length === 0) return alert('No logs to export!');
+            
+            // Added dedicated columns for all 3 IOL types
+            let csvContent = "Date,UHID,Surgery Type,Fixation,Eye Side,Foldable IOL,Rigid IOL,Auroflex IOL\n";
+            
+            cases.forEach(c => {
+                let safeSurgery = c.surgeryType.replace(/,/g, ''); 
+                csvContent += `${c.date},${c.uhid},${safeSurgery},${c.fixation},${c.iolSide},${c.foldablePower},${c.rigidPower},${c.auroflexPower}\n`;
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", `Surgical_Log_${new Date().toISOString().split('T')[0]}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // 4. Clear Logs
+        function clearLogs() {
+            if(confirm("Are you sure you want to delete all stored logs? This cannot be undone.")) {
+                localStorage.removeItem('ophthaLogs_v4');
+                cases = [];
+                renderTable();
+            }
+        }
+
+        // 5. Register Service Worker (v4 cache)
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function() {
+                navigator.serviceWorker.register('sw.js');
+            });
+        }
+    </script>
+</body>
+</html>
